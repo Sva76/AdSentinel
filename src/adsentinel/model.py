@@ -1,91 +1,77 @@
-from __future__ import annotations
-
-from dataclasses import dataclass
-from typing import Iterable, Optional
-
+import pandas as pd
 import numpy as np
-from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import StandardScaler
-from sklearn.decomposition import PCA
-from sklearn.linear_model import RidgeCV
 
-try:
-    from xgboost import XGBRegressor
-    _HAS_XGB = True
-except Exception:  # xgboost non obbligatorio
-    XGBRegressor = None
-    _HAS_XGB = False
+from .features import aa_fraction, net_charge, HYDRO
+from .cdr import extract_cdrs
+from .esm_utils import esm_embed_sequence
+from .model import AdSentinelRegressor
 
 
-@dataclass
-class AdSentinelRegressor:
+def extract_all_features(df: pd.DataFrame) -> np.ndarray:
     """
-    Hybrid regressor: RidgeCV (global trend) + optional XGBoost (local corrections).
-
-    This is a compact version of the model you used in Colab:
-    - imputazione mediana
-    - standardizzazione
-    - PCA
-    - RidgeCV
-    - XGBoost (se disponibile)
+    Estrae tutte le feature per VH + VL:
+    - proprietà globali di sequenza (frazione aa, carica, lunghezza)
+    - lunghezze CDR corrette
+    - embedding ESM-2 (mean pooling)
     """
-    n_components: int = 32
-    ridge_alphas: Iterable[float] = tuple(10.0 ** p for p in range(-3, 4))
-    use_xgb: bool = True
 
-    # learned objects
-    imputer_: Optional[SimpleImputer] = None
-    scaler_: Optional[StandardScaler] = None
-    pca_: Optional[PCA] = None
-    ridge_: Optional[RidgeCV] = None
-    xgb_: Optional[XGBRegressor] = None
+    feats = []
 
-    def _fit_preproc(self, X: np.ndarray) -> np.ndarray:
-        self.imputer_ = SimpleImputer(strategy="median")
-        self.scaler_ = StandardScaler()
-        n_comp = min(self.n_components, X.shape[1])
-        self.pca_ = PCA(n_components=n_comp)
+    # --- calcolo CDR una sola volta su tutto il DF ---
+    # extract_cdrs deve restituire un DataFrame con colonne:
+    # cdrh1, cdrh2, cdrh3, cdrl1, cdrl2, cdrl3
+    df_cdr = extract_cdrs(df.copy())
 
-        X_imp = self.imputer_.fit_transform(X)
-        X_sc  = self.scaler_.fit_transform(X_imp)
-        X_pca = self.pca_.fit_transform(X_sc)
-        return X_pca
+    for row in df_cdr.itertuples(index=False):
 
-    def _transform(self, X: np.ndarray) -> np.ndarray:
-        X_imp = self.imputer_.transform(X)
-        X_sc  = self.scaler_.transform(X_imp)
-        X_pca = self.pca_.transform(X_sc)
-        return X_pca
+        vh = row.vh_protein_sequence
+        vl = row.vl_protein_sequence
 
-    def fit(self, X: np.ndarray, y: np.ndarray):
-        X_pca = self._fit_preproc(X)
+        # --- feature di sequenza ---
+        seq_feats = [
+            aa_fraction(vh, HYDRO),
+            aa_fraction(vl, HYDRO),
+            net_charge(vh),
+            net_charge(vl),
+            len(vh),
+            len(vl),
+        ]
 
-        self.ridge_ = RidgeCV(alphas=list(self.ridge_alphas), store_cv_values=False)
-        self.ridge_.fit(X_pca, y)
+        # --- CDR lunghezze ---
+        cdr_feats = [
+            len(row.cdrh1),
+            len(row.cdrh2),
+            len(row.cdrh3),
+            len(row.cdrl1),
+            len(row.cdrl2),
+            len(row.cdrl3),
+        ]
 
-        if self.use_xgb and _HAS_XGB:
-            self.xgb_ = XGBRegressor(
-                n_estimators=200,
-                max_depth=4,
-                learning_rate=0.05,
-                subsample=0.8,
-                colsample_bytree=0.8,
-                reg_lambda=1.0,
-                tree_method="hist",
-            )
-            self.xgb_.fit(X_pca, y)
-        else:
-            self.xgb_ = None
+        # --- embedding ESM: vh + vl concatenati ---
+        emb = esm_embed_sequence(vh + vl)
 
-        return self
+        feats.append(seq_feats + cdr_feats + list(emb))
 
-    def predict(self, X: np.ndarray) -> np.ndarray:
-        X_pca = self._transform(X)
-        y_ridge = self.ridge_.predict(X_pca)
+    return np.array(feats)
 
-        if self.xgb_ is None:
-            return y_ridge
 
-        y_xgb = self.xgb_.predict(X_pca)
-        # semplice media 50/50 come nel design originale
-        return 0.5 * y_ridge + 0.5 * y_xgb
+def train_adsentinel(train_df: pd.DataFrame, target: str) -> AdSentinelRegressor:
+    """
+    Addestra il modello AdSentinel su un target:
+    es: 'hic', 'acsins', 'titer', 'tm2', ...
+    """
+    X = extract_all_features(train_df)
+    y = train_df[target].values
+
+    model = AdSentinelRegressor()
+    model.fit(X, y)
+
+    return model
+
+
+def predict_adsentinel(model: AdSentinelRegressor, df: pd.DataFrame) -> np.ndarray:
+    """
+    Effettua la predizione usando lo stesso set di feature del training.
+    """
+    X = extract_all_features(df)
+    return model.predict(X)
