@@ -1,0 +1,9 @@
+pandas
+numpy
+scikit-learn
+xgboost
+tqdm
+biopython
+torch
+fair-esm
+pip install -r requirements.txt
