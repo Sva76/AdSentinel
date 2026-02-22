@@ -1,23 +1,35 @@
-def extract_all_features(df):
-    """
-    Estrae tutte le feature di AdSentinel:
-    - feature globali VH/VL
-    - feature CDR (lunghezze, ecc.)
-    - embedding ESM
-    """
-    df = df.copy()
-    # Arricchisco il dataframe UNA volta con le colonne CDR
-    # Supponiamo che extract_cdrs(df) aggiunga colonne:
-    # cdrh1, cdrh2, cdrh3, cdrl1, cdrl2, cdrl3
-    df = extract_cdrs(df)
+import numpy as np
+import pandas as pd
 
-    feats = []
+from .cdr import extract_cdrs
+from .esm_utils import ESMEmbedder
+
+HYDRO = set(["A", "V", "I", "L", "M", "F", "W", "Y"])
+
+def aa_fraction(seq, aa_set):
+    if not seq:
+        return 0.0
+    return sum(1 for a in seq if a in aa_set) / len(seq)
+
+def net_charge(seq):
+    if not seq:
+        return 0.0
+    pos = seq.count("K") + seq.count("R")
+    neg = seq.count("D") + seq.count("E")
+    return (pos - neg) / len(seq)
+
+def compute_sequence_features(df: pd.DataFrame) -> pd.DataFrame:
+
+    df = extract_cdrs(df.copy())
+    embedder = ESMEmbedder()
+
+    rows = []
 
     for row in df.itertuples(index=False):
+
         vh = row.vh_protein_sequence
         vl = row.vl_protein_sequence
 
-        # --- feature globali VH/VL ---
         seq_feats = [
             aa_fraction(vh, HYDRO),
             aa_fraction(vl, HYDRO),
@@ -27,20 +39,17 @@ def extract_all_features(df):
             len(vl),
         ]
 
-        # --- feature CDR (esempio: solo lunghezze) ---
-        cdr_seqs = [
-            row.cdrh1,
-            row.cdrh2,
-            row.cdrh3,
-            row.cdrl1,
-            row.cdrl2,
-            row.cdrl3,
+        cdr_feats = [
+            len(row.cdrh1),
+            len(row.cdrh2),
+            len(row.cdrh3),
+            len(row.cdrl1),
+            len(row.cdrl2),
+            len(row.cdrl3),
         ]
-        cdr_feats = [len(c) if isinstance(c, str) else 0 for c in cdr_seqs]
 
-        # --- embedding ESM (vh+vl concatenati, o come preferisci) ---
-        emb = esm_embed_sequence(vh + vl)  # deve restituire un vettore 1D
+        emb = embedder.embed(vh + vl)
 
-        feats.append(seq_feats + cdr_feats + list(emb))
+        rows.append(seq_feats + cdr_feats + list(emb))
 
-    return np.array(feats)
+    return pd.DataFrame(rows)
