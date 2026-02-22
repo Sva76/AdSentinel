@@ -6,4 +6,4 @@ tqdm
 biopython
 torch
 fair-esm
-pip install -r requirements.txt
+scipy
