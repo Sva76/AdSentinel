@@ -39,8 +39,103 @@ Tm2 – CH2 domain thermostability
 Titer – Expression yield
 
 
+--- 
+
+
+## Quickstart
+
+This section allows you to reproduce the main pipeline in a few steps.
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/Sva76/AdSentinel.git
+cd AdSentinel
+
+
+
+2. Install dependencies
+
+
+pip install -r requirements.txt
+
+
+
+3. Run 5-fold cross-validation (GDPa1)
+
+
+bash scripts/run_cv.sh
+
+
+
+This will:
+
+
+
+
+Load GDPa1 data (see data/README.md for dataset instructions)
+
+
+Train the Ridge + XGBoost ensemble
+
+
+Perform 5-fold stratified cross-validation
+
+
+Print Spearman correlations per property
+
+
+
+
+4. Generate heldout predictions
+
+
+bash scripts/run_heldout.sh
+
+
+
+This will:
+
+
+
+
+Train on the full training set
+
+
+Generate predictions for the heldout/test set
+
+
+Export a submission-ready CSV file
+
+
+
+
+Outputs are saved according to the paths defined in:
+
+
+configs/gdpa1_config.yaml
+
+
+
+
+Expected output (example)
+
+
+After CV, you should see logs similar to:
+
+
+Property: HIC – Spearman: 0.xx
+Property: Tm2 – Spearman: 0.xx
+...
+
+
+
+A CSV file with predictions will be generated in the configured output directory.
+
+
 
 ---
+
 
 Results – Ginkgo 2025 Challenge (Heldout Test Set)
 
