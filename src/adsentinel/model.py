@@ -1,77 +1,25 @@
-import pandas as pd
 import numpy as np
+from sklearn.linear_model import Ridge
+from xgboost import XGBRegressor
 
-from .features import aa_fraction, net_charge, HYDRO
-from .cdr import extract_cdrs
-from .esm_utils import esm_embed_sequence
-from .model import AdSentinelRegressor
+class AdSentinelRegressor:
 
+    def __init__(self):
+        self.ridge = Ridge(alpha=1.0)
+        self.xgb = XGBRegressor(
+            n_estimators=200,
+            max_depth=4,
+            learning_rate=0.05,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            random_state=42,
+        )
 
-def extract_all_features(df: pd.DataFrame) -> np.ndarray:
-    """
-    Estrae tutte le feature per VH + VL:
-    - proprietà globali di sequenza (frazione aa, carica, lunghezza)
-    - lunghezze CDR corrette
-    - embedding ESM-2 (mean pooling)
-    """
+    def fit(self, X, y):
+        self.ridge.fit(X, y)
+        ridge_pred = self.ridge.predict(X).reshape(-1, 1)
+        self.xgb.fit(np.hstack([X, ridge_pred]), y)
 
-    feats = []
-
-    # --- calcolo CDR una sola volta su tutto il DF ---
-    # extract_cdrs deve restituire un DataFrame con colonne:
-    # cdrh1, cdrh2, cdrh3, cdrl1, cdrl2, cdrl3
-    df_cdr = extract_cdrs(df.copy())
-
-    for row in df_cdr.itertuples(index=False):
-
-        vh = row.vh_protein_sequence
-        vl = row.vl_protein_sequence
-
-        # --- feature di sequenza ---
-        seq_feats = [
-            aa_fraction(vh, HYDRO),
-            aa_fraction(vl, HYDRO),
-            net_charge(vh),
-            net_charge(vl),
-            len(vh),
-            len(vl),
-        ]
-
-        # --- CDR lunghezze ---
-        cdr_feats = [
-            len(row.cdrh1),
-            len(row.cdrh2),
-            len(row.cdrh3),
-            len(row.cdrl1),
-            len(row.cdrl2),
-            len(row.cdrl3),
-        ]
-
-        # --- embedding ESM: vh + vl concatenati ---
-        emb = esm_embed_sequence(vh + vl)
-
-        feats.append(seq_feats + cdr_feats + list(emb))
-
-    return np.array(feats)
-
-
-def train_adsentinel(train_df: pd.DataFrame, target: str) -> AdSentinelRegressor:
-    """
-    Addestra il modello AdSentinel su un target:
-    es: 'hic', 'acsins', 'titer', 'tm2', ...
-    """
-    X = extract_all_features(train_df)
-    y = train_df[target].values
-
-    model = AdSentinelRegressor()
-    model.fit(X, y)
-
-    return model
-
-
-def predict_adsentinel(model: AdSentinelRegressor, df: pd.DataFrame) -> np.ndarray:
-    """
-    Effettua la predizione usando lo stesso set di feature del training.
-    """
-    X = extract_all_features(df)
-    return model.predict(X)
+    def predict(self, X):
+        ridge_pred = self.ridge.predict(X).reshape(-1, 1)
+        return self.xgb.predict(np.hstack([X, ridge_pred]))
