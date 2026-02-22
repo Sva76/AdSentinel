@@ -130,3 +130,40 @@ AdSentinel 2.6 is:
 
 
 It is best viewed as a robust sequence baseline for developability modeling.
+
+## Repository structure
+
+This section reflects the current structure of the AdSentinel repository
+as used in the Ginkgo GDPa1 competition submission.
+
+```text
+AdSentinel/
+├── README.md
+├── LICENSE
+├── requirements.txt
+│
+├── src/
+│   └── adsentinel/
+│       ├── __init__.py
+│       ├── features.py          # Sequence + CDR feature engineering
+│       ├── esm_embeddings.py    # ESM-2 embedding wrapper
+│       ├── model.py             # Ridge + XGBoost ensemble
+│       ├── train_cv.py          # 5-fold cross-validation on GDPa1
+│       └── predict.py           # Heldout prediction pipeline
+│
+├── configs/
+│   └── gdpa1_config.yaml        # Dataset paths and hyperparameters
+│
+├── data/
+│   ├── README.md                # Instructions to obtain GDPa1
+│   └── .gitkeep
+│
+├── notebooks/
+│   └── 01_exploration.ipynb     # Optional exploratory analysis
+│
+├── reports/
+│   └── AdSentinel_November_2025.pdf
+│
+└── scripts/
+    ├── run_cv.sh                # Helper script for CV
+    └── run_heldout.sh           # Helper script for heldout predictions
