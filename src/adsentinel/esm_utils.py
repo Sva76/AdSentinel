@@ -1,15 +1,21 @@
 import torch
 import esm
-import numpy as np
 
-def esm_embed_sequence(seq):
-    model, alphabet = esm.pretrained.esm2_t33_650M_UR50D()
-    model.eval()
-    batch_converter = alphabet.get_batch_converter()
-    batch = [("seq", seq)]
-    _, _, toks = batch_converter(batch)
+class ESMEmbedder:
+    def __init__(self, device=None):
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self.model, self.alphabet = esm.pretrained.esm2_t33_650M_UR50D()
+        self.model.eval()
+        self.model.to(self.device)
+        self.batch_converter = self.alphabet.get_batch_converter()
 
-    with torch.no_grad():
-        out = model(toks, repr_layers=[33])
-    emb = out["representations"][33][0, 1:-1].mean(0).numpy()
-    return emb
+    def embed(self, seq: str):
+        batch = [("seq", seq)]
+        _, _, toks = self.batch_converter(batch)
+        toks = toks.to(self.device)
+
+        with torch.no_grad():
+            out = self.model(toks, repr_layers=[33])
+
+        emb = out["representations"][33][0, 1:-1].mean(0).cpu().numpy()
+        return emb
