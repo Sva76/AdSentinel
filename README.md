@@ -1,9 +1,3 @@
-Perfetto. Lo riscriviamo completo, coerente e non “planned”.
-Qui sotto trovi il README aggiornato pronto da sostituire integralmente.
-
-
----
-
 AdSentinel 2.6 – Antibody Developability Model
 
 AdSentinel 2.6 is a hybrid, sequence-based model for predicting antibody developability properties on the GDPa1 dataset (Ginkgo Antibody Developability Benchmark).
