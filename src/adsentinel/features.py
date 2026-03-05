@@ -76,3 +76,5 @@ def compute_sequence_features(df: pd.DataFrame) -> pd.DataFrame:
         feat_df = pd.concat([feat_df, isotype_df], axis=1)
 
     return feat_df.astype(float)
+
+Add hc_subtype (isotype) feature to AdSentinel pipeline
