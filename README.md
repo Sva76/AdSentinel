@@ -152,3 +152,8 @@ AdSentinel 2.6 is:
 ❌ Not a 3D-aware physics model  
 
 It should be viewed as a **robust sequence baseline** for antibody developability modeling.
+
+The feature pipeline now supports **isotype-aware modeling**
+via `hc_subtype` one-hot encoding, following feedback from
+the Ginkgo AbDev competition team that antibody subclass
+information can influence model performance.
