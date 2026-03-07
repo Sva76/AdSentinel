@@ -118,6 +118,17 @@ The isotype feature was added following feedback from the Ginkgo Datapoints
 team, since antibody subclass information can influence developability
 measurements such as thermostability.
 
+### Model architecture
+
+AdSentinel uses a lightweight stacked regression model:
+
+1. **Ridge regression** produces baseline predictions from sequence features and embeddings.
+2. **XGBoost** learns additional structure using the original features plus the Ridge predictions.
+
+To prevent data leakage during stacking, Ridge predictions used to train XGBoost
+are generated using **out-of-fold cross-validation**.
+
+
 ### Results
 
 Cluster-aware cross-validation Spearman correlations obtained with the
