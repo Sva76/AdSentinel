@@ -1,3 +1,13 @@
+"""
+AdSentinel feature pipeline.
+
+Features currently include:
+- sequence-derived physicochemical features
+- ESM embeddings
+- antibody isotype (hc_subtype) one-hot encoding
+"""
+
+
 import numpy as np
 import pandas as pd
 
