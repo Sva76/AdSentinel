@@ -93,6 +93,69 @@ This will:
 | AC-SINS | 0.038 | Weak sequence signal |
 | Titer | -0.028 | No detectable sequence signal |
 
+## Evaluation (Cluster-Aware Cross Validation)
+
+To obtain a realistic estimate of generalization performance, the model was
+evaluated using the **cluster-aware cross-validation scheme provided in the
+GDPa1 dataset**:
+
+`hierarchical_cluster_IgG_isotype_stratified_fold`
+
+This evaluation prevents highly similar antibodies from appearing in both
+training and test sets, which can otherwise lead to overly optimistic results
+with random K-fold splits.
+
+### Model configuration
+
+The baseline model uses:
+
+- **ESM embeddings** derived from VH/VL sequences
+- simple physicochemical sequence descriptors
+- **isotype-aware features** (`hc_subtype` one-hot encoding)
+- **Ridge regression** as the regression model
+
+The isotype feature was added following feedback from the Ginkgo Datapoints
+team, since antibody subclass information can influence developability
+measurements such as thermostability.
+
+### Results
+
+Cluster-aware cross-validation Spearman correlations obtained with the
+sequence-based AdSentinel baseline:
+
+| Property | Spearman ρ |
+|--------|--------|
+| HIC | **0.538** |
+| Tm2 | **0.348** |
+| PR_CHO | **0.458** |
+| AC-SINS (pH 7.4) | **0.472** |
+| Titer | **0.276** |
+
+These results confirm that sequence-derived embeddings already contain
+significant signal for antibody developability prediction.
+
+However, the model remains a **sequence-only baseline**, and further
+improvements may be obtained by integrating structural features.
+
+---
+
+## Future Work
+
+A structural extension of AdSentinel has been conceptually designed but not
+yet fully implemented during the competition.
+
+Planned structural features include:
+
+- AlphaFold / ESMFold predicted structures
+- radius of gyration
+- solvent accessible surface area (SASA)
+- VH–VL interface compactness
+- pLDDT confidence metrics
+
+These features may improve prediction for properties strongly influenced by
+structural stability and surface interactions, such as **Tm2** and
+**AC-SINS**.
+
 ### Interpretation
 
 - **HIC is largely sequence-driven** → AdSentinel 2.6 performs competitively.
