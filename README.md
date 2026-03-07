@@ -1,19 +1,23 @@
 # AdSentinel 2.6 – Antibody Developability Model
 
-AdSentinel 2.6 is a hybrid, sequence-based model for predicting antibody developability properties on the **GDPa1 dataset** (Ginkgo Antibody Developability Benchmark).
+AdSentinel 2.6 is a sequence-based model for predicting antibody developability properties on the **GDPa1 dataset** (Ginkgo Antibody Developability Benchmark).
 
 The model combines:
 
-- **ESM-2 embeddings** (mean-pooled VH/VL sequences)
-- **CDR-based biochemical descriptors** (length-based features from AHo numbering)
 - **Global sequence biophysical features** (hydrophobicity fraction, net charge, sequence length)
-- A **two-stage regression ensemble**: Ridge → XGBoost
+- **Isotype-aware features** (`hc_subtype` one-hot encoding)
+- A **two-stage regression ensemble**: Ridge → XGBoost (with out-of-fold stacking)
 
 This repository contains the exact implementation used for the **sequence-only submission** to the Ginkgo challenge.
 
 > ⚠️ **Note**  
-> A 3D structural extension (AlphaFold-based features: pLDDT, radius of gyration, PAE, etc.) was designed conceptually but was not included in the competition submission.  
-> This repository reflects the validated **sequence-only baseline**.
+> ESM-2 embeddings were used during development and contributed to higher scores,
+> but the embedding vectors are not currently included in this repository due to file size constraints.
+> The published code runs with physicochemical + isotype features only.
+>
+> A 3D structural extension (AlphaFold-based features: pLDDT, radius of gyration, PAE, VH–VL interface metrics)
+> has been designed and validated on a single antibody structure but was not included in the competition submission.
+> See the `docs/` folder for the full 3D design document.
 
 ---
 
@@ -57,9 +61,9 @@ python -m adsentinel.train_cv \
 This will:
 
 - Load GDPa1 training data
-- Compute sequence + CDR + ESM features
+- Compute sequence + isotype features
 - Train the Ridge + XGBoost ensemble
-- Perform 5-fold stratified cross-validation
+- Perform 5-fold cluster-aware cross-validation
 - Print Spearman correlations per property
 - Save out-of-fold predictions to CSV
 
@@ -83,7 +87,30 @@ This will:
 
 ---
 
-# Results – Ginkgo 2025 Challenge (Heldout Test Set)
+# Results
+
+## Cluster-Aware Cross-Validation (published code, sequence + isotype features)
+
+Evaluated using the official GDPa1 cluster-aware fold column
+(`hierarchical_cluster_IgG_isotype_stratified_fold`), which prevents similar
+antibodies from appearing in both training and test sets.
+
+| Property | Spearman ρ | p-value |
+|-----------|-----------|---------|
+| HIC | **0.304** | 1.4e-06 |
+| Tm2 | **0.251** | 4.2e-04 |
+| AC-SINS (pH 7.4) | **0.238** | 1.9e-04 |
+| PR_CHO | **0.177** | 1.3e-02 |
+| Titer | 0.091 | 0.16 (n.s.) |
+
+Four out of five properties show statistically significant ranking signal
+using only 9 features (6 physicochemical + 3 isotype one-hot).
+
+## Heldout Test Set (competition submission, included ESM-2 embeddings)
+
+The competition submission used ESM-2 (mean-pooled VH/VL) embeddings in addition
+to the features above. These results are **not reproducible** from the current
+published code alone.
 
 | Property | Spearman ρ (heldout) | Comment |
 |-----------|---------------------|----------|
@@ -93,87 +120,40 @@ This will:
 | AC-SINS | 0.038 | Weak sequence signal |
 | Titer | -0.028 | No detectable sequence signal |
 
-## Evaluation (Cluster-Aware Cross Validation)
+---
 
-To obtain a realistic estimate of generalization performance, the model was
-evaluated using the **cluster-aware cross-validation scheme provided in the
-GDPa1 dataset**:
+## Model Architecture
 
-`hierarchical_cluster_IgG_isotype_stratified_fold`
+AdSentinel uses a lightweight stacked regression:
 
-This evaluation prevents highly similar antibodies from appearing in both
-training and test sets, which can otherwise lead to overly optimistic results
-with random K-fold splits.
-
-### Model configuration
-
-The baseline model uses:
-
-- **ESM embeddings** derived from VH/VL sequences
-- simple physicochemical sequence descriptors
-- **isotype-aware features** (`hc_subtype` one-hot encoding)
-- **Ridge regression** as the regression model
-
-The isotype feature was added following feedback from the Ginkgo Datapoints
-team, since antibody subclass information can influence developability
-measurements such as thermostability.
-
-### Model architecture
-
-AdSentinel uses a lightweight stacked regression model:
-
-1. **Ridge regression** produces baseline predictions from sequence features and embeddings.
-2. **XGBoost** learns additional structure using the original features plus the Ridge predictions.
+1. **Ridge regression** produces baseline predictions from sequence features.
+2. **XGBoost** learns residual structure using the original features plus Ridge predictions.
 
 To prevent data leakage during stacking, Ridge predictions used to train XGBoost
-are generated using **out-of-fold cross-validation**.
-
-
-### Results
-
-Cluster-aware cross-validation Spearman correlations obtained with the
-sequence-based AdSentinel baseline:
-
-| Property | Spearman ρ |
-|--------|--------|
-| HIC | **0.538** |
-| Tm2 | **0.348** |
-| PR_CHO | **0.458** |
-| AC-SINS (pH 7.4) | **0.472** |
-| Titer | **0.276** |
-
-These results confirm that sequence-derived embeddings already contain
-significant signal for antibody developability prediction.
-
-However, the model remains a **sequence-only baseline**, and further
-improvements may be obtained by integrating structural features.
+are generated using **out-of-fold cross-validation** (not in-sample predictions).
 
 ---
 
 ## Future Work
 
-A structural extension of AdSentinel has been conceptually designed but not
-yet fully implemented during the competition.
+A structural extension of AdSentinel has been designed and partially validated.
 
 Planned structural features include:
 
-- AlphaFold / ESMFold predicted structures
-- radius of gyration
-- solvent accessible surface area (SASA)
-- VH–VL interface compactness
-- pLDDT confidence metrics
+- AlphaFold-Multimer predicted structures
+- Radius of gyration
+- Solvent accessible surface area (SASA)
+- VH–VL interface compactness (contact count, mean Cα distance)
+- pLDDT confidence metrics (mean, min, std)
+- PAE cross-chain scores (VH→VL interface confidence)
 
-These features may improve prediction for properties strongly influenced by
-structural stability and surface interactions, such as **Tm2** and
-**AC-SINS**.
+Validation on a single antibody structure confirmed that all features are
+extractable and produce biophysically meaningful values. Full-dataset
+validation requires generating AlphaFold-Multimer structures for all 246
+antibodies in the GDPa1 training set.
 
-### Interpretation
-
-- **HIC is largely sequence-driven** → AdSentinel 2.6 performs competitively.
-- Other properties depend strongly on 3D packing, interface physics, and experimental variance → sequence-only models are inherently limited.
-
-This repository is intentionally transparent:  
-it provides a solid and reproducible **sequence baseline**, not an inflated claim.
+These features are expected to improve prediction for properties influenced by
+structural stability and surface interactions, particularly **Tm2** and **AC-SINS**.
 
 ---
 
@@ -188,11 +168,13 @@ AdSentinel/
 ├── src/
 │   └── adsentinel/
 │       ├── __init__.py
-│       ├── features.py        # sequence + CDR + ESM feature extraction
-│       ├── esm_utils.py       # ESM-2 embedding wrapper
-│       ├── model.py           # Ridge + XGBoost ensemble
-│       ├── train_cv.py        # 5-fold cross-validation
+│       ├── features.py        # sequence + isotype feature extraction
+│       ├── model.py           # Ridge + XGBoost ensemble (OOF stacking)
+│       ├── train_cv.py        # cluster-aware cross-validation
 │       └── predict.py         # full training + heldout prediction
+│
+├── docs/
+│   └── adsentinel_3d_guide.md # 3D structural extension design document
 │
 ├── data/
 │   └── README.md              # instructions to obtain GDPa1
@@ -206,9 +188,10 @@ AdSentinel/
 
 The model uses:
 
-- 5-fold stratified cross-validation (official GDPa1 fold column)
+- 5-fold cluster-aware cross-validation (official GDPa1 fold column)
 - Spearman correlation as primary metric
 - Deterministic random seeds
+- Out-of-fold stacking to prevent leakage
 - Explicit feature computation pipeline
 
 Heldout predictions follow the official GDPa1 submission format.
@@ -222,12 +205,10 @@ AdSentinel 2.6 is:
 ✅ Interpretable  
 ✅ Fully sequence-based  
 ✅ Modular and reproducible  
-✅ Easy to extend  
-❌ Not a 3D-aware physics model  
+✅ Easy to extend (ESM embeddings, structural features)  
+❌ Not a 3D-aware physics model (yet)  
 
-It should be viewed as a **robust sequence baseline** for antibody developability modeling.
-
-The feature pipeline now supports **isotype-aware modeling**
-via `hc_subtype` one-hot encoding, following feedback from
-the Ginkgo AbDev competition team that antibody subclass
-information can influence model performance.
+It should be viewed as a **sequence baseline** for antibody developability
+ranking, suitable as a fast computational pre-filter in antibody selection
+pipelines.
+```
