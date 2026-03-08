@@ -235,9 +235,12 @@ All results reported in this README are fully reproducible from the published co
 AdSentinel 2.7 is:
 
 ✅ Adaptive (Click selects features per target)
+
 ✅ Interpretable (CDR zoom features have biological meaning)
+
 ✅ Modular and reproducible
 ✅ Designed for extension (3D features, larger datasets)
+
 ❌ Not a 3D-aware physics model (yet)
 
 It should be viewed as an **adaptive sequence baseline** for antibody developability ranking. The Click mechanism ensures the model uses the right level of detail for each property, and is designed to improve automatically as more training data becomes available.
