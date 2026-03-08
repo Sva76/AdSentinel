@@ -204,7 +204,7 @@ AdSentinel/
 │       └── predict.py         # Click train + heldout prediction
 │
 ├── docs/
-│   └── adsentinel_3d_guide.md # 3D structural extension design document
+│   └── 3D_verification_and_theory.md # 3D structural extension design document
 │
 ├── data/
 │   ├── README.md              # instructions to obtain GDPa1
