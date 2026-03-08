@@ -1,14 +1,22 @@
-"""
-AdSentinel 2.6
-Hybrid sequence-based model for antibody developability prediction.
+AdSentinel 2.7 – Adaptive antibody developability prediction with Click mechanism.
 
 This package provides:
-- Feature extraction from VH/VL sequences
-- A hybrid Ridge + XGBoost regressor
-- Simple helpers for cross-validation and heldout prediction
+- Three-block feature extraction (global, CDR zoom, ESM embeddings)
+- Ridge + XGBoost regressor with OOF stacking
+- Click mechanism for adaptive feature selection per target
+- Cluster-aware cross-validation and heldout prediction
 """
 
-from .features import compute_sequence_features
-from .model import AdSentinelRegressor
+__version__ = "2.7.0"
 
-__all__ = ["compute_sequence_features", "AdSentinelRegressor"]
+from .features import compute_sequence_features, build_global_features, build_zoom_features, build_esm_features
+from .model import AdSentinelRegressor, ClickSelector
+
+__all__ = [
+    "compute_sequence_features",
+    "build_global_features",
+    "build_zoom_features",
+    "build_esm_features",
+    "AdSentinelRegressor",
+    "ClickSelector",
+]
