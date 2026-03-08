@@ -239,6 +239,7 @@ AdSentinel 2.7 is:
 ✅ Interpretable (CDR zoom features have biological meaning)
 
 ✅ Modular and reproducible
+
 ✅ Designed for extension (3D features, larger datasets)
 
 ❌ Not a 3D-aware physics model (yet)
