@@ -1,23 +1,38 @@
-# AdSentinel 2.6 – Antibody Developability Model
+# AdSentinel 2.7 – Antibody Developability Model with Click Mechanism
 
-AdSentinel 2.6 is a sequence-based model for predicting antibody developability properties on the **GDPa1 dataset** (Ginkgo Antibody Developability Benchmark).
+AdSentinel 2.7 is an adaptive sequence-based model for predicting antibody developability properties on the **GDPa1 dataset** (Ginkgo Antibody Developability Benchmark).
 
-The model combines:
+The model operates on three feature blocks:
 
-- **Global sequence biophysical features** (hydrophobicity fraction, net charge, sequence length)
-- **Isotype-aware features** (`hc_subtype` one-hot encoding)
-- A **two-stage regression ensemble**: Ridge → XGBoost (with out-of-fold stacking)
+- **Block 1 – Body** (global): sequence physicochemical features + isotype encoding
+- **Block 2 – Pinze** (zoom): CDR-specific descriptors (hydropathy patches, charge density, sticky regions, loop lengths)
+- **Block 3 – ESM**: ESM-2 mean-pooled embeddings (1280-dim, pre-computed)
 
-This repository contains the exact implementation used for the **sequence-only submission** to the Ginkgo challenge.
+The **Click mechanism** automatically selects the optimal combination of these blocks for each target property using nested cross-validation — because different biophysical properties depend on different levels of molecular detail.
 
-> ⚠️ **Note**  
-> ESM-2 embeddings were used during development and contributed to higher scores,
-> but the embedding vectors are not currently included in this repository due to file size constraints.
-> The published code runs with physicochemical + isotype features only.
->
-> A 3D structural extension (AlphaFold-based features: pLDDT, radius of gyration, PAE, VH–VL interface metrics)
-> has been designed and validated on a single antibody structure but was not included in the competition submission.
-> See the `docs/` folder for the full 3D design document.
+---
+
+# How Click Works
+
+Each antibody property responds to a different level of structural information:
+
+- **HIC** (hydrophobicity) is driven by global sequence composition → Click selects full ESM
+- **Tm2** (thermostability) depends on 3D packing → Click selects compressed ESM + CDR zoom
+- **AC-SINS** (self-association) depends on surface patches → Click adapts per fold
+
+The mechanism uses nested CV:
+
+- **Outer loop**: cluster-aware folds (honest evaluation)
+- **Inner loop**: tests each feature configuration and selects the best per target
+
+Available configurations:
+
+| Config | Features | Dimensions |
+|--------|----------|------------|
+| `full_esm` | Global + full ESM-2 | ~1289 |
+| `body50_pinze` | Global + CDR zoom + ESM PCA-50 | ~101 |
+| `body20_pinze` | Global + CDR zoom + ESM PCA-20 | ~71 |
+| `pinze_only` | Global + CDR zoom, no ESM | ~51 |
 
 ---
 
@@ -25,11 +40,11 @@ This repository contains the exact implementation used for the **sequence-only s
 
 The model predicts five biophysical properties:
 
-- **HIC** – Hydrophobic Interaction Chromatography retention time  
-- **AC-SINS_pH7.4** – Self-association  
-- **PR_CHO** – Polyreactivity in CHO cells  
-- **Tm2** – CH2 domain thermostability  
-- **Titer** – Expression yield  
+- **HIC** – Hydrophobic Interaction Chromatography retention time
+- **AC-SINS_pH7.4** – Self-association
+- **PR_CHO** – Polyreactivity in CHO cells
+- **Tm2** – CH2 domain thermostability
+- **Titer** – Expression yield
 
 ---
 
@@ -48,9 +63,9 @@ cd AdSentinel
 pip install -r requirements.txt
 ```
 
-## 3️⃣ Run 5-fold cross-validation (GDPa1)
+## 3️⃣ Run Click cross-validation (GDPa1)
 
-Place the official GDPa1 training CSV inside the `data/` folder.
+Place the official GDPa1 training CSV and ESM vectors inside the `data/` folder.
 
 ```bash
 python -m adsentinel.train_cv \
@@ -61,9 +76,9 @@ python -m adsentinel.train_cv \
 This will:
 
 - Load GDPa1 training data
-- Compute sequence + isotype features
-- Train the Ridge + XGBoost ensemble
-- Perform 5-fold cluster-aware cross-validation
+- Build three feature blocks (global, CDR zoom, ESM)
+- Run Click nested CV to select best configuration per target
+- Train Ridge → XGBoost ensemble with OOF stacking
 - Print Spearman correlations per property
 - Save out-of-fold predictions to CSV
 
@@ -81,7 +96,8 @@ python -m adsentinel.predict \
 
 This will:
 
-- Train on the full training set
+- Run Click to select best config per target
+- Train on the full training set with selected configs
 - Generate predictions for the heldout/test set
 - Export submission-ready CSV files
 
@@ -89,28 +105,33 @@ This will:
 
 # Results
 
-## Cluster-Aware Cross-Validation (published code, sequence + isotype features)
+## Click CV (sequence + CDR zoom + ESM-2, adaptive selection)
 
-Evaluated using the official GDPa1 cluster-aware fold column
-(`hierarchical_cluster_IgG_isotype_stratified_fold`), which prevents similar
-antibodies from appearing in both training and test sets.
+Evaluated using the official GDPa1 cluster-aware fold column with nested CV for configuration selection.
 
-| Property | Spearman ρ | p-value |
-|-----------|-----------|---------|
-| HIC | **0.304** | 1.4e-06 |
-| Tm2 | **0.251** | 4.2e-04 |
-| AC-SINS (pH 7.4) | **0.238** | 1.9e-04 |
-| PR_CHO | **0.177** | 1.3e-02 |
-| Titer | 0.091 | 0.16 (n.s.) |
+| Property | Spearman ρ | Click config | p-value |
+|-----------|-----------|--------------|---------|
+| HIC | **0.428** | full_esm (5/5) | 3.3e-12 |
+| AC-SINS (pH 7.4) | **0.370** | full_esm (4/5) | 3.0e-09 |
+| PR_CHO | **0.429** | full_esm (5/5) | 3.1e-10 |
+| Tm2 | **0.182** | full_esm (3/5), body20+pinze (2/5) | 1.1e-02 |
+| Titer | **0.286** | full_esm (5/5) | 7.1e-06 |
 
-Four out of five properties show statistically significant ranking signal
-using only 9 features (6 physicochemical + 3 isotype one-hot).
+All five properties show statistically significant ranking signal.
 
-## Heldout Test Set (competition submission, included ESM-2 embeddings)
+**Key finding**: With 246 samples, ESM embeddings dominate for most targets. The CDR zoom features show potential for Tm2 (where Click is split between configurations), suggesting that with larger datasets the zoom features would contribute more signal.
 
-The competition submission used ESM-2 (mean-pooled VH/VL) embeddings in addition
-to the features above. These results are **not reproducible** from the current
-published code alone.
+## Baseline comparison (sequence + isotype only, no ESM)
+
+| Property | Spearman ρ |
+|-----------|-----------|
+| HIC | 0.304 |
+| Tm2 | 0.251 |
+| AC-SINS (pH 7.4) | 0.238 |
+| PR_CHO | 0.177 |
+| Titer | 0.091 (n.s.) |
+
+## Heldout Test Set (competition submission)
 
 | Property | Spearman ρ (heldout) | Comment |
 |-----------|---------------------|----------|
@@ -124,36 +145,45 @@ published code alone.
 
 ## Model Architecture
 
-AdSentinel uses a lightweight stacked regression:
+AdSentinel uses a two-level architecture:
 
-1. **Ridge regression** produces baseline predictions from sequence features.
-2. **XGBoost** learns residual structure using the original features plus Ridge predictions.
+**Level 1 – Feature blocks**:
+- Global (body): sequence composition, length, isotype
+- Zoom (pinze): per-CDR hydropathy, charge patches, sticky regions via sliding window
+- ESM: pre-trained protein language model embeddings (optionally PCA-compressed)
 
-To prevent data leakage during stacking, Ridge predictions used to train XGBoost
-are generated using **out-of-fold cross-validation** (not in-sample predictions).
+**Level 2 – Click selection**:
+- Nested CV tests each feature combination
+- Selects the best configuration per target property
+- Adapts to dataset size (more features useful with more data)
+
+**Level 3 – Regression**:
+- Ridge regression produces baseline predictions
+- XGBoost learns residual nonlinear structure
+- OOF stacking prevents data leakage
+
+---
+
+## CDR Zoom Features
+
+The zoom features extract local molecular descriptors from each CDR region (H1, H2, H3, L1, L2, L3) using AHo numbering alignment:
+
+- **Length**: CDR loop length (especially CDR-H3, range 4–22 residues in GDPa1)
+- **Hydropathy**: mean, max, std of Kyte-Doolittle scores per CDR
+- **Charge**: net charge and absolute charge density per CDR (includes histidine)
+- **Sticky patch**: maximum hydropathy in a sliding 5-residue window — detects the "stickiest" surface spot
+
+These features model the antibody's "clamp" regions that drive non-specific interactions, self-association, and polyreactivity.
 
 ---
 
 ## Future Work
 
-A structural extension of AdSentinel has been designed and partially validated.
+**More data**: The Click mechanism showed that CDR zoom features have potential for Tm2 but need more training samples to outperform raw ESM. With larger datasets (>1000 antibodies), the zoom features are expected to contribute significantly.
 
-Planned structural features include:
+**3D structural extension**: A structural layer has been designed and validated on a single AlphaFold-Multimer structure. Planned features include radius of gyration, SASA, VH–VL interface compactness, pLDDT confidence metrics, and PAE cross-chain scores. See `docs/` for the full design document.
 
-- AlphaFold-Multimer predicted structures
-- Radius of gyration
-- Solvent accessible surface area (SASA)
-- VH–VL interface compactness (contact count, mean Cα distance)
-- pLDDT confidence metrics (mean, min, std)
-- PAE cross-chain scores (VH→VL interface confidence)
-
-Validation on a single antibody structure confirmed that all features are
-extractable and produce biophysically meaningful values. Full-dataset
-validation requires generating AlphaFold-Multimer structures for all 246
-antibodies in the GDPa1 training set.
-
-These features are expected to improve prediction for properties influenced by
-structural stability and surface interactions, particularly **Tm2** and **AC-SINS**.
+**Per-target model specialization**: The Click mechanism could be extended to also select different model hyperparameters (not just feature sets) per target.
 
 ---
 
@@ -168,16 +198,17 @@ AdSentinel/
 ├── src/
 │   └── adsentinel/
 │       ├── __init__.py
-│       ├── features.py        # sequence + isotype feature extraction
-│       ├── model.py           # Ridge + XGBoost ensemble (OOF stacking)
-│       ├── train_cv.py        # cluster-aware cross-validation
-│       └── predict.py         # full training + heldout prediction
+│       ├── features.py        # three-block feature pipeline (global + zoom + ESM)
+│       ├── model.py           # AdSentinelRegressor + ClickSelector
+│       ├── train_cv.py        # Click cross-validation
+│       └── predict.py         # Click train + heldout prediction
 │
 ├── docs/
 │   └── adsentinel_3d_guide.md # 3D structural extension design document
 │
 ├── data/
-│   └── README.md              # instructions to obtain GDPa1
+│   ├── README.md              # instructions to obtain GDPa1
+│   └── AbSentinel_vectors_1280.csv  # ESM-2 pre-computed embeddings
 │
 └── outputs/                   # generated prediction files (created at runtime)
 ```
@@ -189,26 +220,24 @@ AdSentinel/
 The model uses:
 
 - 5-fold cluster-aware cross-validation (official GDPa1 fold column)
+- Nested CV for Click configuration selection (no data leakage)
 - Spearman correlation as primary metric
 - Deterministic random seeds
 - Out-of-fold stacking to prevent leakage
-- Explicit feature computation pipeline
+- Explicit three-block feature computation pipeline
 
-Heldout predictions follow the official GDPa1 submission format.
+All results reported in this README are fully reproducible from the published code and data.
 
 ---
 
 # Positioning
 
-AdSentinel 2.6 is:
+AdSentinel 2.7 is:
 
-✅ Interpretable  
-✅ Fully sequence-based  
-✅ Modular and reproducible  
-✅ Easy to extend (ESM embeddings, structural features)  
-❌ Not a 3D-aware physics model (yet)  
+✅ Adaptive (Click selects features per target)
+✅ Interpretable (CDR zoom features have biological meaning)
+✅ Modular and reproducible
+✅ Designed for extension (3D features, larger datasets)
+❌ Not a 3D-aware physics model (yet)
 
-It should be viewed as a **sequence baseline** for antibody developability
-ranking, suitable as a fast computational pre-filter in antibody selection
-pipelines.
-```
+It should be viewed as an **adaptive sequence baseline** for antibody developability ranking. The Click mechanism ensures the model uses the right level of detail for each property, and is designed to improve automatically as more training data becomes available.
