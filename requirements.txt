@@ -2,8 +2,4 @@ pandas
 numpy
 scikit-learn
 xgboost
-tqdm
-biopython
-torch
-fair-esm
 scipy
